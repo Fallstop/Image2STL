@@ -42,15 +42,15 @@ def get_heights(inputImage):
     return heightData
 
 def generate_mesh_thread(heightData,yOffset,ID, args):
-    global generatedTriangles
+    global generatedMesh
     global threadProgress
     try:
         dataLength = (len(heightData)-1)*(len(heightData[0])-1)
-        triangleMesh = np.zeros(dataLength, dtype=mesh.Mesh.dtype)
+        triangleFaces = np.zeros(shape=(dataLength,3,3))
 
         for x,row in enumerate(heightData[:-1]):
             for y,height in enumerate(row[:-1]):
-                if height == args.nullData:
+                if height == args.nullData or height == 255:
                     continue
                 
                 if x%2 == 0:
@@ -66,7 +66,7 @@ def generate_mesh_thread(heightData,yOffset,ID, args):
                         [x-1, y, heightData[x-1][y]],
                         [x-1, y+1, heightData[x-1][y+1]]
                     ])
-                triangleMesh["vectors"][x*y] = triangle
+                triangleFaces[x*y] = triangle
             if x%3==0 and ID >= 0:
                 threadProgress[id] = x*y
                 if event.is_set():
@@ -74,16 +74,16 @@ def generate_mesh_thread(heightData,yOffset,ID, args):
         if ID >= 0:
             logging.info("Thread",i,"is finished")
             with data_lock:
-                generatedTriangles['vectors'][:,yOffset:len(triangleMesh)] = triangleMesh
+                generatedMesh.vectors[:,yOffset:len(triangleFaces)] = triangleFaces
         else:
-            return triangleMesh
+            return triangleFaces
     except Exception as e:
         logging.error("Error in thread {}! Error:\n{}".format(ID,e))
         traceback.print_exc()
     
 
 def main(args):
-    global generatedTriangles
+    global generatedMesh
     global threadProgress
 
     logging.info("Reading Image")
@@ -96,7 +96,7 @@ def main(args):
 
     logging.info("Generating triangles from data")
     dataLength = (len(heightData)-1)*(len(heightData[0])-1)
-    generatedTriangles = np.zeros(dataLength, dtype=mesh.Mesh.dtype)
+    generatedMesh = mesh.Mesh(np.zeros(dataLength, dtype=mesh.Mesh.dtype))
     logging.debug("Image is {} tall and {} wide with an estimated {} triangles".format(len(heightData),len(heightData[0]),dataLength))
 
 
@@ -129,14 +129,14 @@ def main(args):
                     break
     else:
         logging.info("Using single threading due to small image size")
-        generatedTriangles = generate_mesh_thread(heightData,0,-1,args)
-        print(generatedTriangles)
+        generatedMesh.vectors = generate_mesh_thread(heightData,0,-1,args)
+        print(generatedMesh)
     with open("test.txt", mode="w") as f:
-        f.write(np.array2string(generatedTriangles,threshold=10000000000))
+        f.write(np.array2string(generatedMesh.vectors,threshold=10000000000))
         f.close()
 
-    logging.info("Generating Mesh")
-    generatedMesh = mesh.Mesh(generatedTriangles)
+    # logging.info("Generating Mesh")
+    # generatedMesh.vectors = mesh.Mesh(generatedMesh)
 
     logging.info("Save STL")
     generatedMesh.save(args.outputSTL, mode=Mode.ASCII)

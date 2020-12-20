@@ -2,3 +2,4 @@ numpy-stl
 Pillow
 trimesh
 progressbar2
+open3d
